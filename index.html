@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Our Team Project</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: 30px auto; padding: 0 16px; }
+    button { padding: 8px 14px; }
+    .error { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Hello from our team</h1>
+  <input id="name" placeholder="Your name">
+  <button onclick="greet()">Say hello</button>
+  <p id="result"></p>
+
+  <script>
+    function greet() {
+      const name = document.getElementById("name").value.trim();
+      const out = document.getElementById("result");
+      if (name === "") {               // input validation
+        out.className = "error";
+        out.textContent = "Please type a name.";
+        return;
+      }
+      out.className = "";
+      out.textContent = "Hello, " + name + "!";
+    }
+  </script>
+</body>
+</html>
