@@ -1,33 +1,222 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Our Team Project</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 700px; margin: 30px auto; padding: 0 16px; }
-    button { padding: 8px 14px; }
-    .error { color: #b91c1c; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visitor Pass</title>
 </head>
 <body>
-  <h1>Hello from our team</h1>
-  <input id="name" placeholder="Your name">
-  <button onclick="greet()">Say hello</button>
-  <p id="result"></p>
+<h1>Visitor Pass</h1>
 
-  <script>
-    function greet() {
-      const name = document.getElementById("name").value.trim();
-      const out = document.getElementById("result");
-      if (name === "") {               // input validation
-        out.className = "error";
-        out.textContent = "Please type a name.";
-        return;
-      }
-      out.className = "";
-      out.textContent = "Hello, " + name + "!";
-    }
-  </script>
+<p>
+  Role:
+  <select id="role">
+    <option>Visitor</option>
+    <option>Admin</option>
+  </select>
+</p>
+<hr>
+
+<div id="visitor">
+  <h2>Request a pass</h2>
+  <p>Name: <input id="name"></p>
+  <p>Date: <input id="date" type="date"></p>
+  <p>Host: <input id="host"></p>
+  <button id="submit">Submit</button>
+</div>
+
+<div id="adminlogin">
+  <h2>Admin login</h2>
+  <p>Username: <input id="username"></p>
+  <p>Password: <input id="password" type="password"></p>
+  <button id="login">Login</button>
+</div>
+
+<div id="adminview">
+  <h2>Pending requests</h2>
+  <p><button id="logout">Logout</button></p>
+  <div id="pending"></div>
+</div>
+
+<p id="message"></p>
+<div id="logbox">
+  <hr>
+  <h3>Log</h3>
+  <pre id="log"></pre>
+</div>
+
+<script>
+// ---- Data layer ----
+var passes = JSON.parse(localStorage.getItem("passes") || "[]");
+function save() { localStorage.setItem("passes", JSON.stringify(passes)); }
+
+// ---- Login (demo only: credentials are in the page, so this is not real security) ----
+var ADMIN_USER = "admin";
+var ADMIN_PASS = "admin";
+var loggedIn = false;
+
+function login(username, password) {
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    loggedIn = true;
+    log("LOGIN OK: " + username);
+    return true;
+  }
+  log("LOGIN FAILED: " + username);
+  return false;
+}
+
+function logout() {
+  loggedIn = false;
+  log("LOGOUT");
+}
+
+// ---- Security: who may do what (deny by default) ----
+var allowed = {
+  request: ["Visitor"],
+  list: ["Admin"],
+  decide: ["Admin"]
+};
+
+function log(text) {
+  document.getElementById("log").textContent = text + "\n" + document.getElementById("log").textContent;
+}
+
+function authorize(role, action) {
+  if (!allowed[action] || allowed[action].indexOf(role) === -1) {
+    log("DENIED: " + role + " tried to " + action);
+    throw new Error("Not allowed: " + role + " cannot " + action);
+  }
+  if (role === "Admin" && !loggedIn) {
+    log("DENIED: Admin not logged in tried to " + action);
+    throw new Error("Please log in as admin first.");
+  }
+  log("ALLOWED: " + role + " -> " + action);
+}
+
+// ---- Business layer ----
+function validate(name, date, host) {
+  var namePattern = /^[A-Za-z][A-Za-z '.-]{1,59}$/;
+  var today = new Date().toISOString().slice(0, 10);
+  if (!namePattern.test(name)) throw new Error("Name must be 2-60 letters.");
+  if (!namePattern.test(host)) throw new Error("Host must be 2-60 letters.");
+  if (!date) throw new Error("Please pick a date.");
+  if (date < today) throw new Error("Date cannot be in the past.");
+}
+
+function makeCode() {
+  var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  var code = "";
+  for (var i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function requestPass(role, name, date, host) {
+  authorize(role, "request");
+  name = name.trim();
+  host = host.trim();
+  validate(name, date, host);
+  passes.push({ id: Date.now(), name: name, date: date, host: host, status: "pending", code: "" });
+  save();
+}
+
+function listPending(role) {
+  authorize(role, "list");
+  return passes.filter(function (p) { return p.status === "pending"; });
+}
+
+function decide(role, id, approve) {
+  authorize(role, "decide");
+  var p = passes.find(function (x) { return x.id === id; });
+  if (!p || p.status !== "pending") throw new Error("Request not found.");
+  p.status = approve ? "approved" : "denied";
+  if (approve) p.code = makeCode();
+  save();
+  return p;
+}
+
+// ---- UI ----
+var msg = document.getElementById("message");
+
+function show(role) {
+  var isAdmin = role === "Admin";
+  document.getElementById("visitor").style.display = role === "Visitor" ? "" : "none";
+  document.getElementById("adminlogin").style.display = isAdmin && !loggedIn ? "" : "none";
+  document.getElementById("adminview").style.display = isAdmin && loggedIn ? "" : "none";
+  document.getElementById("logbox").style.display = isAdmin && loggedIn ? "" : "none";
+  msg.textContent = "";
+  if (isAdmin && loggedIn) drawPending();
+}
+
+function drawPending() {
+  var box = document.getElementById("pending");
+  box.textContent = "";
+  var list = listPending("Admin");
+  if (list.length === 0) box.textContent = "Nothing pending.";
+  list.forEach(function (p) {
+    var row = document.createElement("p");
+    row.textContent = p.name + " | " + p.date + " | host: " + p.host + " ";
+    var yes = document.createElement("button");
+    yes.textContent = "Approve";
+    yes.onclick = function () { act(p.id, true); };
+    var no = document.createElement("button");
+    no.textContent = "Disapprove";
+    no.onclick = function () { act(p.id, false); };
+    row.appendChild(yes);
+    row.appendChild(no);
+    box.appendChild(row);
+  });
+}
+
+function act(id, approve) {
+  var role = document.getElementById("role").value;
+  try {
+    var p = decide(role, id, approve);
+    drawPending();
+    msg.textContent = approve ? "Approved " + p.name + ". Pass code: " + p.code : "Disapproved " + p.name + ".";
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+}
+
+document.getElementById("role").onchange = function () {
+  if (this.value === "Visitor" && loggedIn) logout();
+  show(this.value);
+};
+
+document.getElementById("submit").onclick = function () {
+  var role = document.getElementById("role").value;
+  try {
+    requestPass(role, document.getElementById("name").value,
+                document.getElementById("date").value,
+                document.getElementById("host").value);
+    msg.textContent = "Request sent. Waiting for admin approval.";
+    document.getElementById("name").value = "";
+    document.getElementById("date").value = "";
+    document.getElementById("host").value = "";
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+};
+
+document.getElementById("login").onclick = function () {
+  var user = document.getElementById("username").value;
+  var pass = document.getElementById("password").value;
+  document.getElementById("password").value = "";
+  if (login(user, pass)) {
+    document.getElementById("username").value = "";
+    show("Admin");
+  } else {
+    msg.textContent = "Wrong username or password.";
+  }
+};
+
+document.getElementById("logout").onclick = function () {
+  logout();
+  show("Admin");
+  msg.textContent = "Logged out.";
+};
+
+show("Visitor");
+</script>
 </body>
 </html>
